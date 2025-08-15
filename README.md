@@ -136,6 +136,100 @@ After running all (window × factor × storage) scenarios:
 
 ## TL;DR decision rule
 
+Here’s a **GitHub README-friendly** version of that explanation, formatted in Markdown.
+
+---
+
+## 📊 Percentile Metrics & ACU Factor Conversion
+
+This section documents how the Aurora cost analysis Lambda processes metrics and converts load values into ACU (Aurora Capacity Unit) estimates.
+
+---
+
+### **1. Percentile Calculations**
+
+We calculate **p50**, **p95**, and **p99** values for three CloudWatch metrics:
+
+```python
+dbload_p50 = percentile(dbload, 50.0) if dbload else 0.0
+dbload_p95 = percentile(dbload, 95.0) if dbload else 0.0
+dbload_p99 = percentile(dbload, 99.0) if dbload else 0.0
+
+cpu_p50    = percentile(cpu, 50.0) if cpu else 0.0
+cpu_p95    = percentile(cpu, 95.0) if cpu else 0.0
+cpu_p99    = percentile(cpu, 99.0) if cpu else 0.0
+
+connections_p95 = percentile(conn, 95.0) if conn else 0.0
+```
+
+#### **Meaning:**
+
+* **p50 (median)** → The middle value; 50% of the time load is below this.
+* **p95** → Higher than 95% of samples; used for near-peak sizing.
+* **p99** → Higher than 99% of samples; captures rare spikes.
+
+If no data is available, defaults to `0.0`.
+
+---
+
+### **2. `AAS_TO_ACU_FACTORS` Conversion**
+
+Provisioned clusters don’t have direct ACU metrics (ACU is a Serverless-only measure).
+We estimate ACUs from the `DBLoad` (Average Active Sessions) metric.
+
+```python
+AAS_TO_ACU_FACTORS: List[float] = [0.75, 1.00, 1.25]
+```
+
+#### **Meaning:**
+
+* **0.75** → Lightweight workload (1 DBLoad < 1 ACU)
+* **1.00** → Neutral workload (1 DBLoad ≈ 1 ACU)
+* **1.25** → Heavy workload (1 DBLoad > 1 ACU)
+
+---
+
+### **3. How They Work Together**
+
+1. Take **p95 DBLoad** (near-peak load).
+2. Multiply it by each factor to get **three ACU estimates**.
+3. For each ACU estimate:
+
+   * Calculate cost for **Aurora Serverless v2**
+   * Calculate cost for **Aurora Provisioned** (all instance classes)
+4. Return recommendations for each factor scenario.
+
+---
+
+**Example:**
+
+If `dbload_p95 = 4.0`:
+
+| Factor | ACU Estimate |
+| ------ | ------------ |
+| 0.75   | 3.0 ACUs     |
+| 1.00   | 4.0 ACUs     |
+| 1.25   | 5.0 ACUs     |
+
+* If all factors recommend the same option → decision is **robust**.
+* If results vary by factor → decision is **sensitive** to workload assumptions.
+
+---
+
+### **Why This Matters**
+
+Including both percentile metrics and ACU estimates:
+
+* Makes recommendations **transparent**
+* Helps validate assumptions
+* Shows **sensitivity** of results to workload weight
+
+---
+
+I can also add a **Markdown table generator** into the Lambda so this exact table appears in your CloudWatch logs and API responses.
+Do you want me to add that too so your README examples match actual Lambda output?
+
+
 For each scenario:
 
 1. Compute **Serverless cost** (real ACU for serverless clusters; estimated ACU for provisioned).
