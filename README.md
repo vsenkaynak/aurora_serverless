@@ -225,40 +225,71 @@ Including both percentile metrics and ACU estimates:
 
 ---
 
-⚙️ CPU-Aware ACU Estimation Settings
 
-These settings control how provisioned cluster workloads are converted into Aurora Capacity Unit (ACU) estimates for cost comparisons.
 
+
+
+## ⚙️ ACU Estimation Logic
+
+When comparing **Aurora Serverless v2** vs **Provisioned** costs, we estimate the required **Aurora Capacity Units (ACU)** from CloudWatch metrics.
+
+### 🔹 `AAS_TO_ACU_FACTORS`
+
+```python
+AAS_TO_ACU_FACTORS = [0.75, 1.00, 1.25]
+```
+
+These factors convert **Average Active Sessions (AAS)** from CloudWatch’s `DBLoad` metric into **ACUs** for provisioned clusters:
+
+* **0.75** → Lightweight workload (1 DBLoad < 1 ACU)
+* **1.00** → Neutral workload (1 DBLoad ≈ 1 ACU)
+* **1.25** → Heavy workload (1 DBLoad > 1 ACU)
+
+We use multiple factors to see how sensitive the recommendation is to workload assumptions.
+For example, if `DBLoad p95 = 4.0`:
+
+| Factor | Estimated ACU |
+| ------ | ------------- |
+| 0.75   | 3.0 ACU       |
+| 1.00   | 4.0 ACU       |
+| 1.25   | 5.0 ACU       |
+
+---
+
+### 🔹 CPU-Aware ACU Estimation Settings
+
+```python
 USE_CPU_IN_ACU_ESTIMATE = True   # blend CPU into ACU estimate
 ACU_BLEND_MODE = "max"           # "max" (recommended) or "avg"
 CPU_TO_ACU_HEADROOM = 0.70       # scale CPU→ACU similar to AAS headroom
 CPU_WEIGHT = 0.5                 # only used when ACU_BLEND_MODE == "avg"
+```
 
-USE_CPU_IN_ACU_ESTIMATE
+#### `USE_CPU_IN_ACU_ESTIMATE`
 
-True → combine DBLoad-based and CPU-based ACU estimates.
+* **True** → combine **DBLoad-based** and **CPU-based** ACU estimates.
+* **Why:** DBLoad alone may miss CPU-heavy patterns; CPU metrics can reveal additional scaling needs.
 
-Why: DBLoad (Average Active Sessions) alone may miss CPU-heavy patterns; CPU metrics give a more complete picture.
+#### `ACU_BLEND_MODE`
 
-ACU_BLEND_MODE
+* **`"max"` (recommended):** Use the **higher** of DBLoad→ACU and CPU→ACU (safer against spikes).
+* **`"avg"`:** Weighted average of both metrics (controlled by `CPU_WEIGHT`).
 
-"max" (recommended): use the higher of the DBLoad→ACU and CPU→ACU estimates (conservative).
+#### `CPU_TO_ACU_HEADROOM`
 
-"avg": weighted average of the two (see CPU_WEIGHT), less conservative.
+* Multiplier to avoid sizing at 100% CPU.
+* Example: 8 vCPUs @ 50% CPU → raw = 4 ACU; with 0.70 headroom → **2.8 ACU**.
 
-CPU_TO_ACU_HEADROOM
+#### `CPU_WEIGHT` *(only if `"avg"` mode)*
 
-When converting CPU% to ACUs, apply this multiplier to avoid sizing to 100% CPU.
+* Weight of CPU-based ACU estimate in the blend.
+* `0.5` = equal weight with DBLoad; `0.7` = more influence from CPU.
 
-Example: 8 vCPUs at 50% CPU → raw = 4; with 0.70 headroom → 2.8 ACU.
+> **Note:** For **Serverless v2** clusters, we skip this logic and use the actual ACU metric from CloudWatch.
 
-CPU_WEIGHT (only if ACU_BLEND_MODE == "avg")
+---
 
-Weight of the CPU-based estimate when averaging.
 
-0.5 = equal influence; 0.7 = more influence from CPU.
-
-Note: For Aurora Serverless v2, we use actual ServerlessDatabaseCapacity from CloudWatch instead of estimating.
 
 
 
