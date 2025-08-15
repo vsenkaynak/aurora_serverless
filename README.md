@@ -226,14 +226,5 @@ Including both percentile metrics and ACU estimates:
 
 ---
 
-I can also add a **Markdown table generator** into the Lambda so this exact table appears in your CloudWatch logs and API responses.
-Do you want me to add that too so your README examples match actual Lambda output?
 
-
-For each scenario:
-
-1. Compute **Serverless cost** (real ACU for serverless clusters; estimated ACU for provisioned).
-2. Compute **Provisioned** costs across classes, pick **cheapest that fits**.
-3. **Recommend the cheaper** of the two.
-4. If currently provisioned, show **resize advice** and how it stacks up against **Serverless**.
 
