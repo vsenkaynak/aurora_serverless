@@ -134,11 +134,10 @@ After running all (window × factor × storage) scenarios:
 
 ---
 
-## TL;DR decision rule
 
-Here’s a **GitHub README-friendly** version of that explanation, formatted in Markdown.
 
----
+
+
 
 ## 📊 Percentile Metrics & ACU Factor Conversion
 
