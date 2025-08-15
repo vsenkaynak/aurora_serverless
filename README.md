@@ -1,6 +1,3 @@
-Here’s a concise logic summary you can drop into your GitHub **README.md**.
-
----
 
 # Aurora Cost Advisor (Lambda)
 
