@@ -528,11 +528,15 @@ def evaluate_one_window_with_storage(*, label: str, factor: float,
     lines.append(f"[{label}|factor={factor:.2f}|storage={storage_type_used}] Cluster={db_identifier} | Engine={engine} | Mode={mode} | DetectedStorage={detected_storage_type or 'unknown'}")
     lines.append(f"Lookback={lookback_days}d @ {period_seconds}s; AAS p95={shape.dbload_p95:.2f}, CPU p95={shape.cpu_p95:.1f}%, Conn p95={shape.connections_p95:.0f}")
     lines.append(f"I/O: {io_detail}; billed @ ${IO_PRICE_PER_MILLION:.2f}/M when Standard")
+
     if best_prov:
         lines.append(f"Best Provisioned: {best_prov.instance_class} → ${best_prov.monthly_cost:,.2f}/mo ({best_prov.breakdown.detail})")
     else:
         lines.append("Best Provisioned: (none fits or missing price entries)")
+
     lines.append(f"Serverless v2: ${sv2_cost.monthly_total:,.2f}/mo ({acu_notes}; {sv2_cost.detail})")
+
+    # Primary recommendation: Serverless vs Best Provisioned
     if best_prov:
         if best_prov.monthly_cost < sv2_cost.monthly_total:
             diff = sv2_cost.monthly_total - best_prov.monthly_cost
@@ -543,12 +547,35 @@ def evaluate_one_window_with_storage(*, label: str, factor: float,
     else:
         lines.append("→ Recommendation: SERVERLESS v2 (no valid provisioned fit).")
 
-    if mode == "provisioned" and current_prov and best_prov:
-        cur_v = INSTANCE_VCPU.get(current_prov.instance_class, 0)
-        new_v = INSTANCE_VCPU.get(best_prov.instance_class, 0)
-        if new_v < cur_v: lines.append(f"Resize advice: DOWNSIZE {current_prov.instance_class} → {best_prov.instance_class}.")
-        elif new_v > cur_v: lines.append(f"Resize advice: UPGRADE {current_prov.instance_class} → {best_prov.instance_class}.")
-        else: lines.append("Resize advice: Current size already optimal among candidates.")
+    # Resize advice (only when currently provisioned), with explicit Serverless comparisons
+    if mode == "provisioned":
+        if current_prov:
+            # 1) Current vs Serverless
+            cur_vs_sv2 = current_prov.monthly_cost - sv2_cost.monthly_total
+            if cur_vs_sv2 > 0:
+                lines.append(f"Current vs Serverless: SERVERLESS is cheaper than current by ${cur_vs_sv2:,.2f}/mo.")
+            else:
+                lines.append(f"Current vs Serverless: Current is cheaper than Serverless by ${-cur_vs_sv2:,.2f}/mo.")
+
+        if current_prov and best_prov:
+            # 2) Classic resize advice within provisioned
+            cur_v = INSTANCE_VCPU.get(current_prov.instance_class, 0)
+            new_v = INSTANCE_VCPU.get(best_prov.instance_class, 0)
+            if new_v < cur_v:
+                lines.append(f"Resize advice (provisioned): DOWNSIZE {current_prov.instance_class} → {best_prov.instance_class} (saves ${current_prov.monthly_cost - best_prov.monthly_cost:,.2f}/mo).")
+            elif new_v > cur_v:
+                lines.append(f"Resize advice (provisioned): UPGRADE {current_prov.instance_class} → {best_prov.instance_class} (adds ${best_prov.monthly_cost - current_prov.monthly_cost:,.2f}/mo).")
+            else:
+                lines.append("Resize advice (provisioned): Current size already optimal among candidates.")
+
+            # 3) Best Provisioned vs Serverless
+            best_vs_sv2 = best_prov.monthly_cost - sv2_cost.monthly_total
+            if best_vs_sv2 > 0:
+                lines.append(f"Even after resizing to {best_prov.instance_class}, SERVERLESS remains cheaper by ${best_vs_sv2:,.2f}/mo.")
+            elif best_vs_sv2 < 0:
+                lines.append(f"After resizing to {best_prov.instance_class}, PROVISIONED would be cheaper than Serverless by ${-best_vs_sv2:,.2f}/mo.")
+            else:
+                lines.append(f"After resizing to {best_prov.instance_class}, costs tie with Serverless.")
 
     wd = WindowDecision(
         label=label, factor=factor,
