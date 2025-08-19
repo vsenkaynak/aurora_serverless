@@ -154,6 +154,45 @@ This ensures recommendations are accurate for serverless workloads.
 This Lambda is your **Aurora cost advisor**.
 It looks at your real workload, simulates both **Serverless v2** and **Provisioned** paths, and highlights the **cheapest safe option**—across multiple time windows so you can make confident decisions.
 
+Got it 👍 — here’s how you can integrate the **CPU fallback explanation** directly into your GitHub README so it flows naturally with your existing sections.
+
+
+
 ---
 
-Would you like me to also generate a **table version of cost comparison** for the README (so viewers can see an at-a-glance difference without running the Lambda), or do you prefer to keep it lean and only describe functionality?
+## ⚡ CPU Fallback Explained
+
+Aurora recommendations are ideally based on **DBLoad** (from Performance Insights) or **Serverless ACU metrics**. These map directly to Aurora capacity and give the most accurate sizing guidance.
+
+However, in many clusters **Performance Insights is not enabled**, and **provisioned clusters don’t report ACU usage**. In those cases, the function falls back to using **CPUUtilization** from CloudWatch.
+
+### Why CPU Fallback Exists
+
+* **Always available**: Every RDS/Aurora cluster publishes `CPUUtilization`.
+* **Reasonable proxy**: If CPU p95 is consistently high, the instance is under pressure.
+* **Prevents gaps**: Ensures the tool can still provide recommendations when DBLoad is missing.
+
+### Limitations
+
+* CPU% does not always reflect Aurora’s internal scaling needs.
+* Workloads that are **I/O-heavy** or **connection-heavy** may require more capacity even if CPU% looks low.
+* The mapping requires assumptions (e.g., “assume 4 vCPUs”), which can under- or over-estimate actual capacity.
+
+### When It’s “Good Enough”
+
+* When you need a **ballpark estimate** of provisioned vs serverless costs.
+* For **CPU-bound workloads** where CPU usage directly correlates with load.
+* When Performance Insights is disabled and you cannot enable it.
+
+### When It May Mislead
+
+* For **I/O-heavy workloads** (lots of queries, low CPU).
+* **Spiky workloads** that look fine on average but have bursts.
+* When comparing **very different instance classes** with different vCPU counts.
+
+### Takeaway
+
+✅ CPU fallback ensures the function *always works*, but it’s a **best-effort estimate**.
+For production decisions, enabling **Performance Insights** is strongly recommended so DBLoad can be used instead.
+
+
