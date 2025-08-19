@@ -71,64 +71,122 @@ CPU_WEIGHT = 0.5                 # only used when ACU_BLEND_MODE == "avg"
 MONTH_HOURS = 730.0
 
 # -------- Instance catalog (classes + vCPUs + prices) --------
-CANDIDATE_CLASSES: List[str] = [
-    # Burstable
-    "db.t3.large", "db.t3.xlarge", "db.t3.2xlarge",
-    "db.t4g.large", "db.t4g.xlarge", "db.t4g.2xlarge",
-    # Memory-optimized (Intel r4/r5)
+CANDIDATE_CLASSES = [
+    # R4 (legacy)
     "db.r4.large", "db.r4.xlarge", "db.r4.2xlarge", "db.r4.4xlarge", "db.r4.8xlarge", "db.r4.16xlarge",
+
+    # R5
     "db.r5.large", "db.r5.xlarge", "db.r5.2xlarge", "db.r5.4xlarge", "db.r5.12xlarge", "db.r5.24xlarge",
-    # Graviton (r6g/r7g/r8g)
-    "db.r6g.large", "db.r6g.xlarge", "db.r6g.2xlarge", "db.r6g.4xlarge", "db.r6g.8xlarge", "db.r6g.12xlarge", "db.r6g.16xlarge",
+
+    # R6g (Graviton2)
+    "db.r6g.large", "db.r6g.xlarge", "db.r6g.2xlarge", "db.r6g.4xlarge", "db.r6g.8xlarge",
+    "db.r6g.12xlarge", "db.r6g.16xlarge",
+
+    # R6i (Intel Ice Lake)
+    "db.r6i.large", "db.r6i.xlarge", "db.r6i.2xlarge", "db.r6i.4xlarge", "db.r6i.8xlarge",
+    "db.r6i.12xlarge", "db.r6i.16xlarge", "db.r6i.24xlarge", "db.r6i.32xlarge",
+
+    # R7g (Graviton3)
     "db.r7g.large", "db.r7g.xlarge", "db.r7g.2xlarge", "db.r7g.4xlarge", "db.r7g.8xlarge",
-    "db.r8g.large", "db.r8g.xlarge", "db.r8g.2xlarge", "db.r8g.4xlarge", "db.r8g.8xlarge",
-    # Extended memory-optimized
-    "db.x1e.xlarge", "db.x1e.2xlarge", "db.x1e.4xlarge", "db.x1e.8xlarge", "db.x1e.16xlarge", "db.x1e.32xlarge",
-    "db.x2g.large", "db.x2g.xlarge", "db.x2g.2xlarge", "db.x2g.4xlarge", "db.x2g.8xlarge", "db.x2g.12xlarge", "db.x2g.16xlarge",
-    # High-frequency compute
+
+    # X2g (Extended memory-optimized, Graviton2)
+    "db.x2g.large", "db.x2g.xlarge", "db.x2g.2xlarge", "db.x2g.4xlarge", "db.x2g.8xlarge",
+    "db.x2g.12xlarge", "db.x2g.16xlarge",
+
+    # Z1d (High-frequency compute)
     "db.z1d.large", "db.z1d.xlarge", "db.z1d.2xlarge", "db.z1d.3xlarge", "db.z1d.6xlarge", "db.z1d.12xlarge",
 ]
-# NOTE: all *.medium were removed from the candidate list above per your request.
 
-INSTANCE_VCPU: Dict[str, int] = {
-    "db.t3.large": 2, "db.t3.xlarge": 4, "db.t3.2xlarge": 8,
-    "db.t4g.large": 2, "db.t4g.xlarge": 4, "db.t4g.2xlarge": 8,
-    "db.r4.large": 2, "db.r4.xlarge": 4, "db.r4.2xlarge": 8, "db.r4.4xlarge": 16, "db.r4.8xlarge": 32, "db.r4.16xlarge": 64,
-    "db.r5.large": 2, "db.r5.xlarge": 4, "db.r5.2xlarge": 8, "db.r5.4xlarge": 16, "db.r5.12xlarge": 48, "db.r5.24xlarge": 96,
-    "db.r6g.large": 2, "db.r6g.xlarge": 4, "db.r6g.2xlarge": 8, "db.r6g.4xlarge": 16, "db.r6g.8xlarge": 32, "db.r6g.12xlarge": 48, "db.r6g.16xlarge": 64,
+
+INSTANCE_VCPU = {
+    # R4
+    "db.r4.large": 2, "db.r4.xlarge": 4, "db.r4.2xlarge": 8, "db.r4.4xlarge": 16,
+    "db.r4.8xlarge": 32, "db.r4.16xlarge": 64,
+
+    # R5
+    "db.r5.large": 2, "db.r5.xlarge": 4, "db.r5.2xlarge": 8, "db.r5.4xlarge": 16,
+    "db.r5.12xlarge": 48, "db.r5.24xlarge": 96,
+
+    # R6g
+    "db.r6g.large": 2, "db.r6g.xlarge": 4, "db.r6g.2xlarge": 8, "db.r6g.4xlarge": 16,
+    "db.r6g.8xlarge": 32, "db.r6g.12xlarge": 48, "db.r6g.16xlarge": 64,
+
+    # R6i
+    "db.r6i.large": 2, "db.r6i.xlarge": 4, "db.r6i.2xlarge": 8, "db.r6i.4xlarge": 16,
+    "db.r6i.8xlarge": 32, "db.r6i.12xlarge": 48, "db.r6i.16xlarge": 64,
+    "db.r6i.24xlarge": 96, "db.r6i.32xlarge": 128,
+
+    # R7g
     "db.r7g.large": 2, "db.r7g.xlarge": 4, "db.r7g.2xlarge": 8, "db.r7g.4xlarge": 16, "db.r7g.8xlarge": 32,
-    "db.r8g.large": 2, "db.r8g.xlarge": 4, "db.r8g.2xlarge": 8, "db.r8g.4xlarge": 16, "db.r8g.8xlarge": 32,
-    "db.x1e.xlarge": 4, "db.x1e.2xlarge": 8, "db.x1e.4xlarge": 16, "db.x1e.8xlarge": 32, "db.x1e.16xlarge": 64, "db.x1e.32xlarge": 128,
-    "db.x2g.large": 2, "db.x2g.xlarge": 4, "db.x2g.2xlarge": 8, "db.x2g.4xlarge": 16, "db.x2g.8xlarge": 32, "db.x2g.12xlarge": 48, "db.x2g.16xlarge": 64,
-    "db.z1d.large": 2, "db.z1d.xlarge": 4, "db.z1d.2xlarge": 8, "db.z1d.3xlarge": 12, "db.z1d.6xlarge": 24, "db.z1d.12xlarge": 48,
+
+    # X2g (extended memory)
+    "db.x2g.large": 2, "db.x2g.xlarge": 4, "db.x2g.2xlarge": 8, "db.x2g.4xlarge": 16,
+    "db.x2g.8xlarge": 32, "db.x2g.12xlarge": 48, "db.x2g.16xlarge": 64,
+
+    # Z1d (high-frequency compute)
+    "db.z1d.large": 2, "db.z1d.xlarge": 4, "db.z1d.2xlarge": 8, "db.z1d.3xlarge": 12,
+    "db.z1d.6xlarge": 24, "db.z1d.12xlarge": 48,
 }
 
-# Hourly prices (compute only). Fill what you want considered.
-INSTANCE_HOURLY_PRICES: Dict[str, float] = {
-    "db.t3.large": 0.134, "db.t3.xlarge": 0.268, "db.t3.2xlarge": 0.536,
-    "db.t4g.large": 0.116, "db.t4g.xlarge": 0.232, "db.t4g.2xlarge": 0.464,
-    "db.r4.large": 0.29, "db.r4.xlarge": 0.58, "db.r4.2xlarge": 1.16, "db.r4.4xlarge": 2.32, "db.r4.8xlarge": 4.64, "db.r4.16xlarge": 9.28,
-    "db.r5.large": 0.25, "db.r5.xlarge": 0.50, "db.r5.2xlarge": 1.00, "db.r5.4xlarge": 2.00, "db.r5.12xlarge": 6.00, "db.r5.24xlarge": 12.00,
-    "db.r6g.large": 0.246, "db.r6g.xlarge": 0.492, "db.r6g.2xlarge": 0.984, "db.r6g.4xlarge": 1.968, "db.r6g.8xlarge": 3.936, "db.r6g.12xlarge": 5.904, "db.r6g.16xlarge": 7.872,
-    "db.r7g.large": 0.252, "db.r7g.xlarge": 0.504, "db.r7g.2xlarge": 1.008, "db.r7g.4xlarge": 2.016, "db.r7g.8xlarge": 4.032,
-    # Add r8g/x1e/x2g/z1d as needed...
+INSTANCE_HOURLY_PRICES = {
+    # R4 (legacy — not supported with I/O-Optimized storage; keep only if you run old engine versions)
+    "db.r4.large": 0.290, "db.r4.xlarge": 0.580, "db.r4.2xlarge": 1.160, "db.r4.4xlarge": 2.320,
+    "db.r4.8xlarge": 4.640, "db.r4.16xlarge": 9.280,
+
+    # R5
+    "db.r5.large": 0.250, "db.r5.xlarge": 0.500, "db.r5.2xlarge": 1.000, "db.r5.4xlarge": 2.000,
+    "db.r5.12xlarge": 6.000, "db.r5.24xlarge": 12.000,
+
+    # R6g (Graviton2)
+    "db.r6g.large": 0.246, "db.r6g.xlarge": 0.492, "db.r6g.2xlarge": 0.984, "db.r6g.4xlarge": 1.968,
+    "db.r6g.8xlarge": 3.936, "db.r6g.12xlarge": 5.904, "db.r6g.16xlarge": 7.872,
+
+    # R6i (Intel Ice Lake)
+    "db.r6i.large": 0.270, "db.r6i.xlarge": 0.540, "db.r6i.2xlarge": 1.080, "db.r6i.4xlarge": 2.160,
+    "db.r6i.8xlarge": 4.320, "db.r6i.12xlarge": 6.480, "db.r6i.16xlarge": 8.640,
+    "db.r6i.24xlarge": 12.960, "db.r6i.32xlarge": 17.280,
+
+    # R7g (Graviton3)
+    "db.r7g.large": 0.252, "db.r7g.xlarge": 0.504, "db.r7g.2xlarge": 1.008, "db.r7g.4xlarge": 2.016,
+    "db.r7g.8xlarge": 4.032,
+
+    # X2g (extended memory, Graviton2) — starter values
+    "db.x2g.large": 0.370, "db.x2g.xlarge": 0.740, "db.x2g.2xlarge": 1.480, "db.x2g.4xlarge": 2.960,
+    "db.x2g.8xlarge": 5.920, "db.x2g.12xlarge": 8.880, "db.x2g.16xlarge": 11.840,
+
+    # Z1d (high-frequency compute) — starter values
+    "db.z1d.large": 0.310, "db.z1d.xlarge": 0.620, "db.z1d.2xlarge": 1.240, "db.z1d.3xlarge": 1.860,
+    "db.z1d.6xlarge": 3.720, "db.z1d.12xlarge": 7.440,
 }
 
 # If I/O-Optimized (aurora-iopt1), multiply provisioned hourly prices by:
-IO_OPTIMIZED_MULTIPLIERS_BY_CLASS: Dict[str, float] = {
+IO_OPTIMIZED_MULTIPLIERS_BY_CLASS = {
+    # Family-level multipliers; override per-class if you have exacts
+    "db.r4.large": 1.150, "db.r4.xlarge": 1.150, "db.r4.2xlarge": 1.150, "db.r4.4xlarge": 1.150,
+    "db.r4.8xlarge": 1.150, "db.r4.16xlarge": 1.150,
+
+    "db.r5.large": 1.150, "db.r5.xlarge": 1.150, "db.r5.2xlarge": 1.150, "db.r5.4xlarge": 1.150,
+    "db.r5.12xlarge": 1.150, "db.r5.24xlarge": 1.150,
+
     "db.r6g.large": 1.170, "db.r6g.xlarge": 1.170, "db.r6g.2xlarge": 1.170, "db.r6g.4xlarge": 1.170,
     "db.r6g.8xlarge": 1.170, "db.r6g.12xlarge": 1.170, "db.r6g.16xlarge": 1.170,
-    "db.r7g.large": 1.167, "db.r7g.xlarge": 1.167, "db.r7g.2xlarge": 1.167, "db.r7g.4xlarge": 1.167, "db.r7g.8xlarge": 1.167,
-    "db.r8g.large": 1.167, "db.r8g.xlarge": 1.167, "db.r8g.2xlarge": 1.167, "db.r8g.4xlarge": 1.167, "db.r8g.8xlarge": 1.167,
-    "db.r4.large": 1.15, "db.r4.xlarge": 1.15, "db.r4.2xlarge": 1.15, "db.r4.4xlarge": 1.15, "db.r4.8xlarge": 1.15, "db.r4.16xlarge": 1.15,
-    "db.r5.large": 1.15, "db.r5.xlarge": 1.15, "db.r5.2xlarge": 1.15, "db.r5.4xlarge": 1.15, "db.r5.12xlarge": 1.15, "db.r5.24xlarge": 1.15,
-    "db.t3.large": 1.15, "db.t3.xlarge": 1.15, "db.t3.2xlarge": 1.15,
-    "db.t4g.large": 1.15, "db.t4g.xlarge": 1.15, "db.t4g.2xlarge": 1.15,
-    "db.x1e.xlarge": 1.12, "db.x1e.2xlarge": 1.12, "db.x1e.4xlarge": 1.12, "db.x1e.8xlarge": 1.12, "db.x1e.16xlarge": 1.12, "db.x1e.32xlarge": 1.12,
-    "db.x2g.large": 1.12, "db.x2g.xlarge": 1.12, "db.x2g.2xlarge": 1.12, "db.x2g.4xlarge": 1.12, "db.x2g.8xlarge": 1.12, "db.x2g.12xlarge": 1.12, "db.x2g.16xlarge": 1.12,
-    "db.z1d.large": 1.15, "db.z1d.xlarge": 1.15, "db.z1d.2xlarge": 1.15, "db.z1d.3xlarge": 1.15, "db.z1d.6xlarge": 1.15, "db.z1d.12xlarge": 1.15,
-    "default": 1.17,
+
+    "db.r6i.large": 1.160, "db.r6i.xlarge": 1.160, "db.r6i.2xlarge": 1.160, "db.r6i.4xlarge": 1.160,
+    "db.r6i.8xlarge": 1.160, "db.r6i.12xlarge": 1.160, "db.r6i.16xlarge": 1.160,
+    "db.r6i.24xlarge": 1.160, "db.r6i.32xlarge": 1.160,
+
+    "db.r7g.large": 1.167, "db.r7g.xlarge": 1.167, "db.r7g.2xlarge": 1.167, "db.r7g.4xlarge": 1.167,
+    "db.r7g.8xlarge": 1.167,
+
+    "db.x2g.large": 1.120, "db.x2g.xlarge": 1.120, "db.x2g.2xlarge": 1.120, "db.x2g.4xlarge": 1.120,
+    "db.x2g.8xlarge": 1.120, "db.x2g.12xlarge": 1.120, "db.x2g.16xlarge": 1.120,
+
+    "db.z1d.large": 1.150, "db.z1d.xlarge": 1.150, "db.z1d.2xlarge": 1.150, "db.z1d.3xlarge": 1.150,
+    "db.z1d.6xlarge": 1.150, "db.z1d.12xlarge": 1.150,
+
+    "default": 1.170,  # fallback
 }
+
 
 AAS_HEADROOM = 0.70
 
