@@ -8,6 +8,7 @@ Changes in this version:
 - Q3 (ServerlessDatabaseCapacity) always queried at cluster level (DBClusterIdentifier).
 - CPU-only fallback when DBLoad/ACU are missing; unified chooser uses DBLoad p95 or CPU p95.
 - Stable windows with -5min CW skew; structured JSON output with monthly_equivalent only.
+- NEW: exclude all *.medium classes from candidates, sort by effective hourly cost, stop at first fit.
 """
 
 import json
@@ -20,7 +21,6 @@ import boto3
 
 # ============== GLOBAL DEBUG TOGGLE ==============
 DEBUG = True  # set False to silence all logs
-
 def log(*args, **kwargs):
     if DEBUG:
         print(*args, **kwargs)
@@ -28,7 +28,6 @@ def log(*args, **kwargs):
 # =========================
 # ====== CONFIG (edit) =====
 # =========================
-
 REGION = "us-east-1"
 
 # Compare storage modes:
@@ -74,8 +73,8 @@ MONTH_HOURS = 730.0
 # -------- Instance catalog (classes + vCPUs + prices) --------
 CANDIDATE_CLASSES: List[str] = [
     # Burstable
-    "db.t3.medium", "db.t3.large", "db.t3.xlarge", "db.t3.2xlarge",
-    "db.t4g.medium", "db.t4g.large", "db.t4g.xlarge", "db.t4g.2xlarge",
+    "db.t3.large", "db.t3.xlarge", "db.t3.2xlarge",
+    "db.t4g.large", "db.t4g.xlarge", "db.t4g.2xlarge",
     # Memory-optimized (Intel r4/r5)
     "db.r4.large", "db.r4.xlarge", "db.r4.2xlarge", "db.r4.4xlarge", "db.r4.8xlarge", "db.r4.16xlarge",
     "db.r5.large", "db.r5.xlarge", "db.r5.2xlarge", "db.r5.4xlarge", "db.r5.12xlarge", "db.r5.24xlarge",
@@ -89,10 +88,11 @@ CANDIDATE_CLASSES: List[str] = [
     # High-frequency compute
     "db.z1d.large", "db.z1d.xlarge", "db.z1d.2xlarge", "db.z1d.3xlarge", "db.z1d.6xlarge", "db.z1d.12xlarge",
 ]
+# NOTE: all *.medium were removed from the candidate list above per your request.
 
 INSTANCE_VCPU: Dict[str, int] = {
-    "db.t3.medium": 2, "db.t3.large": 2, "db.t3.xlarge": 4, "db.t3.2xlarge": 8,
-    "db.t4g.medium": 2, "db.t4g.large": 2, "db.t4g.xlarge": 4, "db.t4g.2xlarge": 8,
+    "db.t3.large": 2, "db.t3.xlarge": 4, "db.t3.2xlarge": 8,
+    "db.t4g.large": 2, "db.t4g.xlarge": 4, "db.t4g.2xlarge": 8,
     "db.r4.large": 2, "db.r4.xlarge": 4, "db.r4.2xlarge": 8, "db.r4.4xlarge": 16, "db.r4.8xlarge": 32, "db.r4.16xlarge": 64,
     "db.r5.large": 2, "db.r5.xlarge": 4, "db.r5.2xlarge": 8, "db.r5.4xlarge": 16, "db.r5.12xlarge": 48, "db.r5.24xlarge": 96,
     "db.r6g.large": 2, "db.r6g.xlarge": 4, "db.r6g.2xlarge": 8, "db.r6g.4xlarge": 16, "db.r6g.8xlarge": 32, "db.r6g.12xlarge": 48, "db.r6g.16xlarge": 64,
@@ -105,8 +105,8 @@ INSTANCE_VCPU: Dict[str, int] = {
 
 # Hourly prices (compute only). Fill what you want considered.
 INSTANCE_HOURLY_PRICES: Dict[str, float] = {
-    "db.t3.medium": 0.067, "db.t3.large": 0.134, "db.t3.xlarge": 0.268, "db.t3.2xlarge": 0.536,
-    "db.t4g.medium": 0.058, "db.t4g.large": 0.116, "db.t4g.xlarge": 0.232, "db.t4g.2xlarge": 0.464,
+    "db.t3.large": 0.134, "db.t3.xlarge": 0.268, "db.t3.2xlarge": 0.536,
+    "db.t4g.large": 0.116, "db.t4g.xlarge": 0.232, "db.t4g.2xlarge": 0.464,
     "db.r4.large": 0.29, "db.r4.xlarge": 0.58, "db.r4.2xlarge": 1.16, "db.r4.4xlarge": 2.32, "db.r4.8xlarge": 4.64, "db.r4.16xlarge": 9.28,
     "db.r5.large": 0.25, "db.r5.xlarge": 0.50, "db.r5.2xlarge": 1.00, "db.r5.4xlarge": 2.00, "db.r5.12xlarge": 6.00, "db.r5.24xlarge": 12.00,
     "db.r6g.large": 0.246, "db.r6g.xlarge": 0.492, "db.r6g.2xlarge": 0.984, "db.r6g.4xlarge": 1.968, "db.r6g.8xlarge": 3.936, "db.r6g.12xlarge": 5.904, "db.r6g.16xlarge": 7.872,
@@ -122,8 +122,8 @@ IO_OPTIMIZED_MULTIPLIERS_BY_CLASS: Dict[str, float] = {
     "db.r8g.large": 1.167, "db.r8g.xlarge": 1.167, "db.r8g.2xlarge": 1.167, "db.r8g.4xlarge": 1.167, "db.r8g.8xlarge": 1.167,
     "db.r4.large": 1.15, "db.r4.xlarge": 1.15, "db.r4.2xlarge": 1.15, "db.r4.4xlarge": 1.15, "db.r4.8xlarge": 1.15, "db.r4.16xlarge": 1.15,
     "db.r5.large": 1.15, "db.r5.xlarge": 1.15, "db.r5.2xlarge": 1.15, "db.r5.4xlarge": 1.15, "db.r5.12xlarge": 1.15, "db.r5.24xlarge": 1.15,
-    "db.t3.medium": 1.15, "db.t3.large": 1.15, "db.t3.xlarge": 1.15, "db.t3.2xlarge": 1.15,
-    "db.t4g.medium": 1.15, "db.t4g.large": 1.15, "db.t4g.xlarge": 1.15, "db.t4g.2xlarge": 1.15,
+    "db.t3.large": 1.15, "db.t3.xlarge": 1.15, "db.t3.2xlarge": 1.15,
+    "db.t4g.large": 1.15, "db.t4g.xlarge": 1.15, "db.t4g.2xlarge": 1.15,
     "db.x1e.xlarge": 1.12, "db.x1e.2xlarge": 1.12, "db.x1e.4xlarge": 1.12, "db.x1e.8xlarge": 1.12, "db.x1e.16xlarge": 1.12, "db.x1e.32xlarge": 1.12,
     "db.x2g.large": 1.12, "db.x2g.xlarge": 1.12, "db.x2g.2xlarge": 1.12, "db.x2g.4xlarge": 1.12, "db.x2g.8xlarge": 1.12, "db.x2g.12xlarge": 1.12, "db.x2g.16xlarge": 1.12,
     "db.z1d.large": 1.15, "db.z1d.xlarge": 1.15, "db.z1d.2xlarge": 1.15, "db.z1d.3xlarge": 1.15, "db.z1d.6xlarge": 1.15, "db.z1d.12xlarge": 1.15,
@@ -358,12 +358,6 @@ def infer_period_from_series(ts: List[dt.datetime]) -> int:
 
 # ---------- ACU estimation (with CPU-only fallback) ----------
 
-def get_cluster_acu_limits(cluster: dict) -> Tuple[float, float]:
-    cfg = cluster.get("ServerlessV2ScalingConfiguration") or {}
-    minc = float(cfg.get("MinCapacity") or DEFAULT_MIN_ACU)
-    maxc = float(cfg.get("MaxCapacity") or DEFAULT_MAX_ACU)
-    return minc, maxc
-
 def estimate_acu_seconds(cluster_mode: str, cluster: dict, metrics: Dict[str, MetricSeries],
                          factor: float, min_acu_default: float, max_acu_default: float,
                          writer_vcpu: int) -> Tuple[float, str]:
@@ -504,25 +498,6 @@ def cpu_p95_to_required_acu(cpu_p95: float, effective_vcpu: int) -> float:
     raw_acu = (utilization * effective_vcpu) / max(1e-6, CPU_TO_ACU_HEADROOM)
     return snap_acu(raw_acu, DEFAULT_MIN_ACU, DEFAULT_MAX_ACU, ACU_STEP)
 
-def choose_instance_by_load_or_cpu(dbload_p95: float, cpu_p95: float, effective_vcpu: int) -> List[Tuple[str, bool, str]]:
-    results: List[Tuple[str, bool, str]] = []
-    if dbload_p95 > 0:
-        for ic in CANDIDATE_CLASSES:
-            v = INSTANCE_VCPU.get(ic, 0)
-            fits = (dbload_p95 <= AAS_HEADROOM * v)
-            results.append((ic, fits, "AAS"))
-        return results
-    if cpu_p95 > 0:
-        required_acu = cpu_p95_to_required_acu(cpu_p95, effective_vcpu)
-        for ic in CANDIDATE_CLASSES:
-            v = INSTANCE_VCPU.get(ic, 0)
-            fits = (required_acu <= AAS_HEADROOM * v)
-            results.append((ic, fits, "CPU"))
-        return results
-    for ic in CANDIDATE_CLASSES:
-        results.append((ic, False, "NONE"))
-    return results
-
 # ---------- Window evaluation ----------
 
 def evaluate_one_window_with_storage(*, label: str, factor: float,
@@ -588,27 +563,40 @@ def evaluate_one_window_with_storage(*, label: str, factor: float,
     sv2_monthly = serverless_monthly_equivalent(acu_seconds, storage_type_used, io_requests, hours)
     sv2_cost = CostBreakdown(monthly_equivalent=sv2_monthly)
 
-    # Provisioned options (use AAS p95 if present; else CPU p95)
+    # -------- Provisioned selection: cost-sorted, stop at first fit; exclude *.medium --------
     effective_vcpu = compute_effective_vcpu(current_classes, writer_class)
-    fit_list = choose_instance_by_load_or_cpu(
-        dbload_p95=shape.dbload_p95,
-        cpu_p95=shape.cpu_p95,
-        effective_vcpu=effective_vcpu
-    )
 
-    best_prov: Optional[ProvisionedOption] = None
-    options: List[ProvisionedOption] = []
-    for ic, fits, basis in fit_list:
-        base_price = INSTANCE_HOURLY_PRICES.get(ic)
-        if base_price is None:
+    # Build cost-sorted candidates (exclude *.medium)
+    sorted_cands: List[Tuple[str, float]] = []
+    for ic, base_price in INSTANCE_HOURLY_PRICES.items():
+        if ic.endswith(".medium"):  # exclude .medium
+            continue
+        if ic not in CANDIDATE_CLASSES:
             continue
         mult = get_io_multiplier(storage_type_used, ic)
-        compute_price = base_price * mult
-        monthly_eq = provisioned_monthly_equivalent(compute_price, hours, inst_count, storage_type_used, io_requests)
-        opt = ProvisionedOption(ic, fits, monthly_eq)
-        options.append(opt)
-        if fits and (best_prov is None or opt.monthly_equivalent < best_prov.monthly_equivalent):
-            best_prov = opt
+        eff_price = base_price * mult
+        sorted_cands.append((ic, eff_price))
+    sorted_cands.sort(key=lambda x: x[1])
+
+    # Determine sizing basis
+    basis = "AAS" if shape.dbload_p95 > 0 else ("CPU" if shape.cpu_p95 > 0 else "NONE")
+
+    best_prov: Optional[ProvisionedOption] = None
+    for ic, eff_price_per_hour in sorted_cands:
+        vcpu = INSTANCE_VCPU.get(ic, 0)
+        if basis == "AAS":
+            fits = (shape.dbload_p95 <= AAS_HEADROOM * vcpu)
+        elif basis == "CPU":
+            req_acu = cpu_p95_to_required_acu(shape.cpu_p95, effective_vcpu)
+            fits = (req_acu <= AAS_HEADROOM * vcpu)
+        else:
+            fits = False
+
+        monthly_eq = provisioned_monthly_equivalent(eff_price_per_hour, hours, inst_count, storage_type_used, io_requests)
+        if fits:
+            best_prov = ProvisionedOption(ic, True, monthly_eq)
+            log(f"[provisioned_select] basis={basis}, first_fit={ic}, hourly={eff_price_per_hour:.4f}, monthly_eq={monthly_eq:.4f}")
+            break  # stop at first (cheapest-by-cost) fit
 
     # Current class (if provisioned)
     current_prov = None
@@ -619,9 +607,9 @@ def evaluate_one_window_with_storage(*, label: str, factor: float,
             compute_price = INSTANCE_HOURLY_PRICES[curr] * mult
             monthly_eq = provisioned_monthly_equivalent(compute_price, hours, inst_count, storage_type_used, io_requests)
             fits = False
-            if shape.dbload_p95 > 0:
+            if basis == "AAS" and shape.dbload_p95 > 0:
                 fits = (shape.dbload_p95 <= AAS_HEADROOM * INSTANCE_VCPU.get(curr, 0))
-            elif shape.cpu_p95 > 0:
+            elif basis == "CPU" and shape.cpu_p95 > 0:
                 req_acu = cpu_p95_to_required_acu(shape.cpu_p95, effective_vcpu)
                 fits = (req_acu <= AAS_HEADROOM * INSTANCE_VCPU.get(curr, 0))
             current_prov = ProvisionedOption(curr, fits, monthly_eq)
@@ -641,7 +629,7 @@ def evaluate_one_window_with_storage(*, label: str, factor: float,
         "sv2_monthly_equiv": sv2_cost.monthly_equivalent,
         "best_prov": (best_prov.instance_class, best_prov.monthly_equivalent) if best_prov else None,
         "current_prov": (current_prov.instance_class, current_prov.monthly_equivalent) if current_prov else None,
-        "basis": ("AAS" if shape.dbload_p95>0 else ("CPU" if shape.cpu_p95>0 else "NONE"))
+        "basis": basis
     })
     return wd
 
@@ -685,7 +673,7 @@ def _topk(cands: List[Dict], k: int) -> List[Dict]:
 def lambda_handler(event, context):
     try:
         log(f"[lambda_handler] event={json.dumps(event)}")
-        db_cluster_id = event.get("db_cluster_id")
+        db_cluster_id = event.get("db_cluster_id") or event.get("cluster_id")  # support both keys
         if not db_cluster_id:
             msg = "db_cluster_id is required"
             log(f"[lambda_handler] ERROR: {msg}")
