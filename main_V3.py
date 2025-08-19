@@ -671,22 +671,15 @@ def _topk(cands: List[Dict], k: int) -> List[Dict]:
 # -------------- Lambda entry ----------------
 
  def lambda_handler(event, context):
--    try:
--        log(f"[lambda_handler] event={json.dumps(event)}")
--        db_cluster_id = event.get("db_cluster_id") or event.get("cluster_id")  # support both keys
--        if not db_cluster_id:
--            msg = "db_cluster_id is required"
--            log(f"[lambda_handler] ERROR: {msg}")
--            return {"statusCode": 400, "body": json.dumps({"error": msg})}
-+    try:
-+        # Strict input validation: require exactly {"cluster_id": "<DBClusterIdentifier>"}
-+        if not isinstance(event, dict) or set(event.keys()) != {"cluster_id"} or not event["cluster_id"]:
-+            msg = "Invalid input. Payload must be exactly {'cluster_id': '<DBClusterIdentifier>'}."
-+            log(f"[lambda_handler] ERROR: {msg} event={event!r}")
-+            return {"statusCode": 400, "body": json.dumps({"error": msg})}
-+
-+        log(f"[lambda_handler] event={json.dumps(event)}")
-+        db_cluster_id = event["cluster_id"]
+     try:
+        # Strict input validation: require exactly {"cluster_id": "<DBClusterIdentifier>"}
+        if not isinstance(event, dict) or set(event.keys()) != {"cluster_id"} or not event["cluster_id"]:
+            msg = "Invalid input. Payload must be exactly {'cluster_id': '<DBClusterIdentifier>'}."
+            log(f"[lambda_handler] ERROR: {msg} event={event!r}")
+            return {"statusCode": 400, "body": json.dumps({"error": msg})}
+
+        log(f"[lambda_handler] event={json.dumps(event)}")
+        db_cluster_id = event["cluster_id"]
 
         rds, _ = get_clients(REGION)
         cluster, insts = describe_cluster(rds, db_cluster_id)
