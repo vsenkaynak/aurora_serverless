@@ -77,14 +77,24 @@ ACU_STEP = 0.5
 USE_CPU_IN_ACU_ESTIMATE = True
 CPU_TO_ACU_HEADROOM = 0.70  # keep buffer when mapping CPU→ACU
 
-# Spike-aware headroom (REVISED: lower utilization target when spiky)
+# ---------- Spike-aware headroom (corrected: lower target when spiky) ----------
 SPIKE_AWARE_HEADROOM = True
-HEADROOM_BASE = 0.70     # normal utilization target (≈70% of capacity)
-HEADROOM_MIN  = 0.50     # do not go below 50%
-HEADROOM_MAX  = 0.80     # sanity upper cap if raised elsewhere
-SPIKE_RATIO_THRESHOLD      = 1.30   # treat as spiky when p99 >= 1.30 * p95
-HEADROOM_DROP_AT_THRESHOLD = 0.05   # drop by 5 points right above threshold
-HEADROOM_DROP_MAX          = 0.15   # max drop by 15 points (e.g., 0.70 → 0.55)
+
+# Base utilization target (run the DB at ~70% of capacity under normal conditions)
+HEADROOM_BASE = 0.70
+
+# Bounds for the utilization target
+HEADROOM_MIN  = 0.50   # never go below this (more buffer)
+HEADROOM_MAX  = 0.80   # never go above this (less buffer)
+
+# Spikiness detection: compare p99 to p95
+SPIKE_RATIO_THRESHOLD      = 1.30   # spiky if p99 >= 1.30 * p95
+HEADROOM_DROP_AT_THRESHOLD = 0.05   # drop 5 points when just over threshold
+HEADROOM_DROP_MAX          = 0.15   # drop up to 15 points as p99/p95 approaches 2.0
+
+# (Optional) Calm detection: if p99 is very close to p95, allow slight relaxation upward
+CALM_RATIO_THRESHOLD       = 1.05   # considered calm if p99 <= 1.05 * p95
+HEADROOM_RAISE_MAX         = 0.05   # raise up to +5 points toward HEADROOM_MAX
 
 # Window normalization
 MONTH_HOURS = 730.0
@@ -402,29 +412,55 @@ def cpu_p95_to_required_acu(cpu_p95: float, effective_vcpu: int) -> float:
 
 # ---------- Spike-aware headroom (revised: lower target when spiky) ----------
 def compute_effective_headroom(shape: WorkloadShape) -> float:
+    """
+    Returns the utilization target (headroom factor) for fit checks.
+    - If workload is spiky (p99 >> p95), LOWER the target to add buffer.
+    - If workload is very calm (p99 ~= p95), optionally raise slightly toward HEADROOM_MAX.
+    Prefers DBLoad percentiles when available; otherwise uses CPU percentiles.
+    """
     h = HEADROOM_BASE
     if not SPIKE_AWARE_HEADROOM:
         return max(HEADROOM_MIN, min(HEADROOM_MAX, h))
 
-    def lowered(h_current: float, p95: float, p99: float) -> float:
+    def adjust(h_current: float, p95: float, p99: float) -> float:
         if p95 <= 0 or p99 <= 0:
             return h_current
+
         ratio = p99 / max(1e-6, p95)
-        if ratio < SPIKE_RATIO_THRESHOLD:
-            return h_current
-        capped_ratio = min(ratio, 2.0)
-        ratio_excess = capped_ratio - SPIKE_RATIO_THRESHOLD
-        span = max(1e-6, 2.0 - SPIKE_RATIO_THRESHOLD)
-        frac = ratio_excess / span
-        drop = HEADROOM_DROP_AT_THRESHOLD + (HEADROOM_DROP_MAX - HEADROOM_DROP_AT_THRESHOLD) * frac
-        return max(HEADROOM_MIN, h_current - drop)
 
+        # Spiky → lower target (more buffer)
+        if ratio >= SPIKE_RATIO_THRESHOLD:
+            capped_ratio = min(ratio, 2.0)
+            ratio_excess = capped_ratio - SPIKE_RATIO_THRESHOLD
+            span = max(1e-6, 2.0 - SPIKE_RATIO_THRESHOLD)   # normalize into [0, 1]
+            frac = ratio_excess / span
+            drop = HEADROOM_DROP_AT_THRESHOLD + (HEADROOM_DROP_MAX - HEADROOM_DROP_AT_THRESHOLD) * frac
+            return max(HEADROOM_MIN, h_current - drop)
+
+        # Calm → (optional) small raise toward HEADROOM_MAX
+        if ratio <= CALM_RATIO_THRESHOLD and HEADROOM_RAISE_MAX > 0.0:
+            # linear raise toward HEADROOM_MAX as ratio -> 1.0
+            # when ratio == 1.0, apply ~50% of HEADROOM_RAISE_MAX; when == CALM_RATIO_THRESHOLD, apply ~0
+            calm_span = max(1e-6, CALM_RATIO_THRESHOLD - 1.0)
+            frac = (CALM_RATIO_THRESHOLD - max(1.0, ratio)) / calm_span  # in [0,1]
+            raise_amt = min(HEADROOM_RAISE_MAX, HEADROOM_RAISE_MAX * frac * 0.5 + HEADROOM_RAISE_MAX * 0.5)
+            return min(HEADROOM_MAX, h_current + raise_amt)
+
+        return h_current
+
+    # Prefer DBLoad if present; else CPU
     if shape.dbload_p95 > 0 and shape.dbload_p99 > 0:
-        h = lowered(h, shape.dbload_p95, shape.dbload_p99)
+        h = adjust(h, shape.dbload_p95, shape.dbload_p99)
     elif shape.cpu_p95 > 0 and shape.cpu_p99 > 0:
-        h = lowered(h, shape.cpu_p95, shape.cpu_p99)
+        h = adjust(h, shape.cpu_p95, shape.cpu_p99)
 
-    return max(HEADROOM_MIN, min(HEADROOM_MAX, h))
+    h = max(HEADROOM_MIN, min(HEADROOM_MAX, h))
+    if DEBUG:
+        print(f"[headroom] base={HEADROOM_BASE:.2f} → effective={h:.2f} "
+              f"(dbload p95={shape.dbload_p95:.3f}, p99={shape.dbload_p99:.3f}; "
+              f"cpu p95={shape.cpu_p95:.1f}%, p99={shape.cpu_p99:.1f}%)")
+    return h
+
 
 # ---------- ACU estimation (uses ACU when present; else DBLoad; else CPU) ----------
 def estimate_acu_seconds(cluster_mode: str, cluster: dict, metrics: Dict[str, MetricSeries],
